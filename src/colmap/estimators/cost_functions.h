@@ -628,6 +628,40 @@ struct ScaledDepthErrorCostFunction {
    const double depth_;
  };
 
+
+ struct LogScaledMaxMixDepthErrorCostFunction {
+  public:
+   LogScaledMaxMixDepthErrorCostFunction(const double depth) : depth_(depth) {}
+ 
+   static ceres::CostFunction* Create(const double depth) {
+     return new ceres::AutoDiffCostFunction<LogScaledMaxMixDepthErrorCostFunction, 1, 4, 3, 3, 2>(
+         new LogScaledMaxMixDepthErrorCostFunction(depth));
+   }
+ 
+   template <typename T>
+   bool operator()(const T* const cam_from_world_rotation,
+                   const T* const cam_from_world_translation,
+                   const T* const point3D,
+                   const T* const shift_scale,
+                   T* residuals) const {
+     // Compute the predicted depth in the camera frame.
+     T d_pred = (EigenQuaternionMap<T>(cam_from_world_rotation) *
+                 EigenVector3Map<T>(point3D))[2] +
+                cam_from_world_translation[2];
+ 
+     if (d_pred <= T(0)) {
+       *residuals = T(0);
+       return true;
+     }
+ 
+     *residuals = ceres::log(d_pred) - (ceres::log(T(depth_)) + shift_scale[1]);
+     return true;
+   }
+ 
+  private:
+   const double depth_;
+ };
+
 template <template <typename> class CostFunctor, typename... Args>
 ceres::CostFunction* CreateCameraCostFunction(
     const CameraModelId camera_model_id, Args&&... args) {

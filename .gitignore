@@ -46,3 +46,4 @@ vcpkg_installed/
 *.exe
 *.out
 *.app
+pip-build/
