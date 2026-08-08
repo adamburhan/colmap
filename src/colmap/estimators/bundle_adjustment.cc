@@ -1229,4 +1229,63 @@ void DepthPriorBundleAdjuster(ceres::Problem* problem,
   }
 }
 
+void MaxMixDepthPriorBundleAdjuster(ceres::Problem* problem,
+    image_t image_id,
+    const std::vector<point3D_t>& point3D_ids,
+    const std::vector<double>& depth_modes,
+    const std::vector<double>& mode_weights,
+    const std::vector<double>& mode_sigmas,
+    size_t num_modes,
+    const std::vector<double>& loss_params,
+    BundleAdjustmentOptions::LossFunctionType loss_type,
+    double* shift_scale_ptr,
+    Reconstruction& reconstruction,
+    bool fix_shift,
+    bool fix_scale) {
+  const size_t num_points = point3D_ids.size();
+  if (num_modes == 0) {
+    throw std::runtime_error("num_modes must be positive");
+  }
+  if (depth_modes.size() != num_points * num_modes ||
+      mode_weights.size() != num_points * num_modes ||
+      mode_sigmas.size() != num_points * num_modes ||
+      loss_params.size() != num_points) {
+    throw std::runtime_error(
+        "Mode arrays must have num_points * num_modes elements and "
+        "loss_params must have num_points elements");
+  }
+
+  Image& image = reconstruction.Image(image_id);
+
+  double* cam_rot = image.CamFromWorld().rotation.coeffs().data();
+  double* cam_trans = image.CamFromWorld().translation.data();
+
+  for (size_t i = 0; i < num_points; ++i) {
+    Point3D& point3D = reconstruction.Point3D(point3D_ids[i]);
+
+    const auto begin = i * num_modes;
+    const auto end = begin + num_modes;
+    ceres::CostFunction* cost_function =
+        LogScaledMaxMixDepthErrorCostFunction::Create(
+            {depth_modes.begin() + begin, depth_modes.begin() + end},
+            {mode_weights.begin() + begin, mode_weights.begin() + end},
+            {mode_sigmas.begin() + begin, mode_sigmas.begin() + end});
+
+    // The residual is whitened inside the cost function, so the loss is
+    // built with unit magnitude and loss_params quoted in sigma units.
+    BundleAdjustmentOptions loss_opts;
+    loss_opts.loss_function_type = loss_type;
+    loss_opts.loss_function_scale = loss_params[i];
+
+    ceres::LossFunction* loss_function = loss_opts.CreateLossFunction();
+
+    problem->AddResidualBlock(cost_function,
+        loss_function,
+        cam_rot,
+        cam_trans,
+        point3D.xyz.data(),
+        shift_scale_ptr);
+  }
+}
+
 }  // namespace colmap

@@ -262,6 +262,24 @@ void DepthPriorBundleAdjuster(ceres::Problem* problem,
                               bool fix_shift = false,
                               bool fix_scale = false);
 
+// Adds max-mixture depth priors (K modes per point, log space) to the bundle
+// adjustment problem. Mode arrays are flattened (num_points * num_modes),
+// row-major per point. Residuals are whitened inside the cost function, so
+// no loss magnitudes are taken and loss_params are in sigma units.
+void MaxMixDepthPriorBundleAdjuster(ceres::Problem* problem,
+                                    image_t image_id,
+                                    const std::vector<point3D_t>& point3D_ids,
+                                    const std::vector<double>& depth_modes,
+                                    const std::vector<double>& mode_weights,
+                                    const std::vector<double>& mode_sigmas,
+                                    size_t num_modes,
+                                    const std::vector<double>& loss_params,
+                                    BundleAdjustmentOptions::LossFunctionType loss_type,
+                                    double* shift_scale_ptr,
+                                    Reconstruction& reconstruction,
+                                    bool fix_shift = false,
+                                    bool fix_scale = false);
+
 void PrintSolverSummary(const ceres::Solver::Summary& summary,
                         const std::string& header);
 

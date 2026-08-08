@@ -240,4 +240,66 @@ void BindBundleAdjuster(py::module& m) {
         "logloss"_a = false,
         "fix_shift"_a = false,
         "fix_scale"_a = false);
+
+  m.def("create_maxmix_depth_bundle_adjuster",
+        [](ceres::Problem* problem,
+            image_t image_id,
+            const std::vector<point3D_t>& point3D_ids,
+            py::array_t<double, py::array::c_style | py::array::forcecast> depth_modes,
+            py::array_t<double, py::array::c_style | py::array::forcecast> mode_weights,
+            py::array_t<double, py::array::c_style | py::array::forcecast> mode_sigmas,
+            const std::vector<double>& loss_params,
+            BAOpts::LossFunctionType loss_type,
+            py::array_t<double> shift_scale,
+            Reconstruction& reconstruction,
+            bool fix_shift,
+            bool fix_scale) {
+
+            auto buf = shift_scale.request();
+            if (buf.ndim != 1 || buf.shape[0] != 2)
+                throw std::runtime_error("shift_scale must have exactly 2 elements.");
+            double* shift_scale_ptr = static_cast<double*>(buf.ptr);
+
+            auto modes_buf = depth_modes.request();
+            auto weights_buf = mode_weights.request();
+            auto sigmas_buf = mode_sigmas.request();
+            if (modes_buf.ndim != 2 || weights_buf.ndim != 2 || sigmas_buf.ndim != 2 ||
+                weights_buf.shape[0] != modes_buf.shape[0] ||
+                weights_buf.shape[1] != modes_buf.shape[1] ||
+                sigmas_buf.shape[0] != modes_buf.shape[0] ||
+                sigmas_buf.shape[1] != modes_buf.shape[1])
+                throw std::runtime_error(
+                    "depth_modes, mode_weights, mode_sigmas must all have shape "
+                    "(num_points, num_modes).");
+            if (static_cast<size_t>(modes_buf.shape[0]) != point3D_ids.size())
+                throw std::runtime_error(
+                    "Mode arrays must have point3D_ids.size() rows.");
+
+            const size_t num_modes = modes_buf.shape[1];
+            const size_t total = modes_buf.shape[0] * num_modes;
+            const double* modes_ptr = static_cast<double*>(modes_buf.ptr);
+            const double* weights_ptr = static_cast<double*>(weights_buf.ptr);
+            const double* sigmas_ptr = static_cast<double*>(sigmas_buf.ptr);
+
+            MaxMixDepthPriorBundleAdjuster(
+                problem, image_id, point3D_ids,
+                {modes_ptr, modes_ptr + total},
+                {weights_ptr, weights_ptr + total},
+                {sigmas_ptr, sigmas_ptr + total},
+                num_modes, loss_params, loss_type,
+                shift_scale_ptr, reconstruction,
+                fix_shift, fix_scale);
+        },
+        "problem"_a,
+        "image_id"_a,
+        "point3D_ids"_a,
+        "depth_modes"_a,
+        "mode_weights"_a,
+        "mode_sigmas"_a,
+        "loss_params"_a,
+        "loss_type"_a,
+        "shift_scale"_a,
+        "reconstruction"_a,
+        "fix_shift"_a = false,
+        "fix_scale"_a = false);
 }
