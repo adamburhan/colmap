@@ -629,15 +629,42 @@ struct ScaledDepthErrorCostFunction {
  };
 
 
+ // Max-mixture (Olson & Agarwal) log-space depth error over K depth modes.
+ // Unlike LogScaledDepthErrorCostFunction, the returned residual is WHITENED
+ // (divided by the winning mode's sigma): the active sigma depends on which
+ // mode wins, which changes during optimization, so per-mode weighting cannot
+ // be applied externally via ScaledLoss. Use loss_function_magnitude = 1 and
+ // quote robust loss scales in sigma units for residual blocks of this type.
+ // The winner minimizes the score whitened^2 + 2*log(sigma_k / w_k); the log
+ // normalizer term only selects the mode and does not enter the residual.
  struct LogScaledMaxMixDepthErrorCostFunction {
   public:
-   LogScaledMaxMixDepthErrorCostFunction(const double depth) : depth_(depth) {}
- 
-   static ceres::CostFunction* Create(const double depth) {
-     return new ceres::AutoDiffCostFunction<LogScaledMaxMixDepthErrorCostFunction, 1, 4, 3, 3, 2>(
-         new LogScaledMaxMixDepthErrorCostFunction(depth));
+   LogScaledMaxMixDepthErrorCostFunction(const std::vector<double>& depths,
+                                         const std::vector<double>& weights,
+                                         const std::vector<double>& sigmas)
+       : depths_(depths), sigmas_(sigmas) {
+     THROW_CHECK_EQ(depths.size(), weights.size());
+     THROW_CHECK_EQ(depths.size(), sigmas.size());
+     THROW_CHECK_GT(depths.size(), 0);
+     // Per-mode selection constants 2*log(sigma_k / w_k), fixed at
+     // construction; they vote on the winning mode but carry no gradient.
+     log_norm_.reserve(depths.size());
+     for (size_t k = 0; k < depths.size(); ++k) {
+       THROW_CHECK_GT(depths[k], 0);
+       THROW_CHECK_GT(weights[k], 0);
+       THROW_CHECK_GT(sigmas[k], 0);
+       log_norm_.push_back(2.0 * std::log(sigmas[k] / weights[k]));
+     }
    }
- 
+
+   static ceres::CostFunction* Create(const std::vector<double>& depths,
+                                      const std::vector<double>& weights,
+                                      const std::vector<double>& sigmas) {
+     return new ceres::AutoDiffCostFunction<LogScaledMaxMixDepthErrorCostFunction,
+                                            1, 4, 3, 3, 2>(
+         new LogScaledMaxMixDepthErrorCostFunction(depths, weights, sigmas));
+   }
+
    template <typename T>
    bool operator()(const T* const cam_from_world_rotation,
                    const T* const cam_from_world_translation,
@@ -648,18 +675,34 @@ struct ScaledDepthErrorCostFunction {
      T d_pred = (EigenQuaternionMap<T>(cam_from_world_rotation) *
                  EigenVector3Map<T>(point3D))[2] +
                 cam_from_world_translation[2];
- 
+
      if (d_pred <= T(0)) {
        *residuals = T(0);
        return true;
      }
- 
-     *residuals = ceres::log(d_pred) - (ceres::log(T(depth_)) + shift_scale[1]);
+
+     const T log_d_pred = ceres::log(d_pred);
+     // Winning-mode whitened residual. Jet comparisons compare scalar parts,
+     // so the argmin is a discrete decision; the gradient flows only through
+     // the selected mode's residual.
+     T best_score;
+     for (size_t k = 0; k < depths_.size(); ++k) {
+       const T whitened =
+           (log_d_pred - (ceres::log(T(depths_[k])) + shift_scale[1])) /
+           T(sigmas_[k]);
+       const T score = whitened * whitened + T(log_norm_[k]);
+       if (k == 0 || score < best_score) {
+         best_score = score;
+         *residuals = whitened;
+       }
+     }
      return true;
    }
- 
+
   private:
-   const double depth_;
+   const std::vector<double> depths_;
+   const std::vector<double> sigmas_;
+   std::vector<double> log_norm_;
  };
 
 template <template <typename> class CostFunctor, typename... Args>
