@@ -45,7 +45,7 @@ def solver_options():
     return options
 
 
-def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
+def solve_maxmix(depth_init, modes, weights, sigmas):
     """Optimize the point depth under a single max-mix factor; return final z."""
     rec, p3d_id = make_scene(depth_init)
     image = rec.images[1]
@@ -59,8 +59,8 @@ def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
         np.asarray(modes, float).reshape(1, -1),
         np.asarray(weights, float).reshape(1, -1),
         np.asarray(sigmas, float).reshape(1, -1),
-        [loss_param],  # huge scale => effectively trivial loss
-        pycolmap.LossFunctionType.CAUCHY,
+        [1.0],  # loss scale unused by TRIVIAL
+        pycolmap.LossFunctionType.TRIVIAL,
         shift_scale,
         rec,
     )
@@ -71,7 +71,6 @@ def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
 
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options(), problem, summary)
-    print("    ", summary.BriefReport())
     return rec.points3D[p3d_id].xyz[2]
 
 
@@ -88,8 +87,8 @@ def solve_unimodal(depth_init, depth, sigma_log):
         [p3d_id],
         [depth],
         [1.0 / sigma_log**2],  # loss_magnitudes = inverse log-variance
-        [1e6],  # effectively trivial robust loss
-        pycolmap.LossFunctionType.CAUCHY,
+        [1.0],  # loss scale unused by TRIVIAL
+        pycolmap.LossFunctionType.TRIVIAL,
         shift_scale,
         rec,
         logloss=True,
@@ -101,7 +100,6 @@ def solve_unimodal(depth_init, depth, sigma_log):
 
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options(), problem, summary)
-    print("    ", summary.BriefReport())
     return rec.points3D[p3d_id].xyz[2]
 
 
