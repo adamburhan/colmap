@@ -71,6 +71,7 @@ def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
 
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options(), problem, summary)
+    print("    ", summary.BriefReport())
     return rec.points3D[p3d_id].xyz[2]
 
 
@@ -100,6 +101,7 @@ def solve_unimodal(depth_init, depth, sigma_log):
 
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options(), problem, summary)
+    print("    ", summary.BriefReport())
     return rec.points3D[p3d_id].xyz[2]
 
 
