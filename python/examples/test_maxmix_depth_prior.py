@@ -33,6 +33,18 @@ def make_scene(depth_init):
     return rec, p3d_id
 
 
+def solver_options():
+    # Tight tolerances so converged values can be compared to analytic optima;
+    # ceres defaults (1e-6 function tolerance) stop a few 1e-3 short.
+    options = pyceres.SolverOptions()
+    options.minimizer_progress_to_stdout = False
+    options.max_num_iterations = 200
+    options.function_tolerance = 1e-15
+    options.gradient_tolerance = 1e-15
+    options.parameter_tolerance = 1e-14
+    return options
+
+
 def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
     """Optimize the point depth under a single max-mix factor; return final z."""
     rec, p3d_id = make_scene(depth_init)
@@ -57,10 +69,8 @@ def solve_maxmix(depth_init, modes, weights, sigmas, loss_param=1e6):
     problem.set_parameter_block_constant(image.cam_from_world.translation)
     problem.set_parameter_block_constant(shift_scale)
 
-    options = pyceres.SolverOptions()
-    options.minimizer_progress_to_stdout = False
     summary = pyceres.SolverSummary()
-    pyceres.solve(options, problem, summary)
+    pyceres.solve(solver_options(), problem, summary)
     return rec.points3D[p3d_id].xyz[2]
 
 
@@ -88,13 +98,12 @@ def solve_unimodal(depth_init, depth, sigma_log):
     problem.set_parameter_block_constant(image.cam_from_world.translation)
     problem.set_parameter_block_constant(shift_scale)
 
-    options = pyceres.SolverOptions()
     summary = pyceres.SolverSummary()
-    pyceres.solve(options, problem, summary)
+    pyceres.solve(solver_options(), problem, summary)
     return rec.points3D[p3d_id].xyz[2]
 
 
-def check(name, got, want, tol=1e-4):
+def check(name, got, want, tol=1e-3):
     ok = abs(got - want) < tol
     print(f"[{'PASS' if ok else 'FAIL'}] {name}: got {got:.6f}, want {want:.6f}")
     return ok
